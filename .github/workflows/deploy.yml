@@ -1,35 +1,37 @@
-name: Test & Deploy
+name: CI (build & synth)
+
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]     # runs on merge to main
   pull_request:
-    branches: [ "main" ]
-  workflow_dispatch: {}
-permissions: { id-token: write, contents: read }
-env: { AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }} }
+    branches: [ main ]
+
+permissions:
+  contents: read
+
 jobs:
-  deploy:
+  build-cdk:
+    name: Build & synth CDK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/cdk
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with: { node-version: 18 }
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
-          aws-region: ${{ env.AWS_REGION }}
-      - name: Install CDK deps
-        working-directory: infra/cdk
-        run: npm ci
-      - name: Build
-        working-directory: infra/cdk
-        run: npm run build --if-present && npm test --workdir infra/cdk || true
+          node-version: 20
+          cache: npm
+          cache-dependency-path: infra/cdk/package-lock.json
+
+      - name: Install deps
+        run: npm ci || npm install
+
+      - name: Typecheck & build
+        run: npm run build
+
       - name: CDK synth
-        working-directory: infra/cdk
         run: npx cdk synth
-      - name: CDK deploy
-        working-directory: infra/cdk
-        run: npx cdk deploy --all --require-approval never
