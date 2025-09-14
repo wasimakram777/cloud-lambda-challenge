@@ -1,0 +1,3 @@
+{
+  "app": "node --enable-source-maps dist/bin/entrix-challenge-cdk.js"
+}

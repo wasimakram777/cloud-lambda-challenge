@@ -1,0 +1,26 @@
+{
+  "name": "entrix-challenge-cdk",
+  "version": "0.3.0",
+  "bin": {
+    "entrix-challenge-cdk": "bin/entrix-challenge-cdk.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "cdk": "cdk",
+    "synth": "cdk synth",
+    "deploy": "cdk deploy --all",
+    "test": "jest --passWithNoTests",
+    "build:test": "npm run build && npm test"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/node": "^18.18.0",
+    "aws-cdk-lib": "^2.214.0",
+    "constructs": "^10.3.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "typescript": "~5.4.0"
+  }
+}

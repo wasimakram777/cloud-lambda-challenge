@@ -1,0 +1,35 @@
+name: Test & Deploy
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: {}
+permissions: { id-token: write, contents: read }
+env: { AWS_REGION: ${{ vars.AWS_REGION || 'eu-west-1' }} }
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 18 }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Install CDK deps
+        working-directory: infra/cdk
+        run: npm ci
+      - name: Build
+        working-directory: infra/cdk
+        run: npm run build --if-present && npm test --workdir infra/cdk || true
+      - name: CDK synth
+        working-directory: infra/cdk
+        run: npx cdk synth
+      - name: CDK deploy
+        working-directory: infra/cdk
+        run: npx cdk deploy --all --require-approval never

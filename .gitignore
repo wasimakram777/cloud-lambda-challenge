@@ -1,0 +1,49 @@
+# Node / CDK
+node_modules/
+cdk.out/
+dist/
+coverage/
+*.tsbuildinfo
+
+# Python (Lambdas)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+.env
+.venv/
+venv/
+.Python
+.mypy_cache/
+.pytest_cache/
+.tox/
+.pyre/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# AWS SAM / CDK temp
+.aws-sam/
+cdk.context.json
+*.template.json
+*.template.yaml
+
+# Test outputs
+*.coverage
+.cache/
+
+# Local config
+.env.local
