@@ -1,0 +1,29 @@
+version: 0.2
+
+env:
+  variables:
+    WORKDIR: infra/cdk
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 20
+    commands:
+      - echo "SRC: $CODEBUILD_SRC_DIR"
+      - ls -la
+      - cd "$WORKDIR"
+      - echo "PWD (cdk): $(pwd)"
+      - node -v && npm -v
+      # install deps (fallback if no lock file)
+      - if [ -f package-lock.json ]; then npm ci; else npm install; fi
+
+  build:
+    commands:
+      - cd "$WORKDIR"
+      # build TS -> dist/
+      - npm run build
+      # synth to produce cdk.out/assembly-*
+      - npx cdk synth --app "node dist/bin/entrix-challenge-cdk.js" -o cdk.out
+      # (optional) publish assets if this build is the “assets publish” step
+      # update the assembly file path as needed for your stack name/env
+      # - npx cdk-assets --path "cdk.out/assembly-EntrixCicdStack-Dev/EntrixCicdStackDevEntrixCoreStackCA5A7706.assets.json" publish --verbose

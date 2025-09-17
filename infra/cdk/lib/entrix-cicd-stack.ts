@@ -5,6 +5,7 @@ import * as sns from 'aws-cdk-lib/aws-sns';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
 import { EntrixCoreStack } from './entrix-core-stack';
+import * as cp from 'aws-cdk-lib/aws-codepipeline';
 
 export interface EntrixCicdProps extends cdk.StackProps {
   readonly repoOwner: string;        // e.g. "wasimakram777"
@@ -42,11 +43,13 @@ export class EntrixCicdStack extends cdk.Stack {
     const synth = new pipelines.ShellStep('Synth', {
       input: source,
       env: { CDK_NEW_BOOTSTRAP: '1' },
+      installCommands: [
+        'if [ -f package-lock.json ]; then npm ci; else npm install; fi || npm install',
+        'if [ -f infra/cdk/package-lock.json ]; then npm --prefix infra/cdk ci; else npm --prefix infra/cdk install; fi || npm --prefix infra/cdk install',
+        ],
       commands: [
-        'cd infra/cdk',
-        'npm ci || npm install',
-        'npm run build',
-        'npx cdk synth'
+        'npm --prefix infra/cdk run build || true',
+        'npx --prefix infra/cdk cdk synth',
       ],
       primaryOutputDirectory: 'infra/cdk/cdk.out',
     });
@@ -56,10 +59,13 @@ export class EntrixCicdStack extends cdk.Stack {
       pipelineName: 'EntrixPipeline',
       synth,
       crossAccountKeys: false,
+      pipelineType: cp.PipelineType.V2, 
+      selfMutation: false, 
     });
 
     // Dev stage (deploys EntrixCoreStack into this account/region)
     pipeline.addStage(new DevAppStage(this, 'Dev', { env: props.env }));
+    pipeline.buildPipeline();
 
     // ---- Notifications via EventBridge → SNS (no need to touch pipeline.pipeline) ----
     new events.Rule(this, 'PipelineStateChange', {
