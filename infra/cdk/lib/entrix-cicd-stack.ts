@@ -4,8 +4,9 @@ import * as pipelines from 'aws-cdk-lib/pipelines';
 import * as sns from 'aws-cdk-lib/aws-sns';
 import * as events from 'aws-cdk-lib/aws-events';
 import * as targets from 'aws-cdk-lib/aws-events-targets';
-import { EntrixCoreStack } from './entrix-core-stack';
 import * as cp from 'aws-cdk-lib/aws-codepipeline';
+import * as codebuild from 'aws-cdk-lib/aws-codebuild';
+import { EntrixCoreStack } from './entrix-core-stack';
 
 export interface EntrixCicdProps extends cdk.StackProps {
   readonly repoOwner: string;        // e.g. "wasimakram777"
@@ -27,47 +28,66 @@ export class EntrixCicdStack extends cdk.Stack {
 
     const branch = props.branch ?? 'main';
 
-    // SNS topic for pipeline notifications (plug into Chatbot later if desired)
+    // Alerts (optional)
     const alertsTopic = new sns.Topic(this, 'CicdAlertsTopic', {
       displayName: 'cicd-alerts',
     });
 
-    // Source: GitHub via CodeStar Connection (✅ correct signature)
+    // Source via CodeStar Connection
     const source = pipelines.CodePipelineSource.connection(
       `${props.repoOwner}/${props.repoName}`,
       branch,
       { connectionArn: props.connectionArn }
     );
 
-    // Synth: build & synth the CDK app
+    // Synth: run in infra/cdk, install, build, synth
     const synth = new pipelines.ShellStep('Synth', {
       input: source,
       env: { CDK_NEW_BOOTSTRAP: '1' },
       installCommands: [
-        'if [ -f package-lock.json ]; then npm ci; else npm install; fi || npm install',
-        'if [ -f infra/cdk/package-lock.json ]; then npm --prefix infra/cdk ci; else npm --prefix infra/cdk install; fi || npm --prefix infra/cdk install',
-        ],
-      commands: [
-        'npm --prefix infra/cdk run build || true',
-        'npx --prefix infra/cdk cdk synth',
+        'echo "SRC=$CODEBUILD_SRC_DIR"; pwd; ls -la',
+        // pick correct folder even if CodePipeline checks out into a top-level dir
+        'WORKDIR="infra/cdk"; [ -d "$WORKDIR" ] || WORKDIR="cloud-lambda-challenge/infra/cdk"',
+        'echo "Using WORKDIR=$WORKDIR"',
+        // Prefer Node 20 if nvm present (CodeBuild STANDARD_7_0 already supports Node 20)
+        'if [ -s /usr/local/nvm/nvm.sh ]; then . /usr/local/nvm/nvm.sh && nvm install 20 && nvm use 20; fi',
+        'cd "$WORKDIR"',
+        'node -v && npm -v',
+        '[ -f package-lock.json ] && npm ci || npm install',
       ],
-      primaryOutputDirectory: 'infra/cdk/cdk.out',
+      commands: [
+        'cd "$WORKDIR"',
+        'npm run build',
+        // make sure dist/bin/entrix-challenge-cdk.js exists after build
+        'test -f dist/bin/entrix-challenge-cdk.js || { echo "CDK app entry missing"; ls -la dist/bin; exit 1; }',
+        'npx cdk synth --app "node dist/bin/entrix-challenge-cdk.js" -o cdk.out',
+      ],
+      primaryOutputDirectory: 'infra/cdk/cdk.out', // CDK Pipelines handles the path mapping
     });
 
-    // CDK Pipelines (no direct access to underlying CodePipeline needed)
     const pipeline = new pipelines.CodePipeline(this, 'EntrixPipeline', {
       pipelineName: 'EntrixPipeline',
       synth,
       crossAccountKeys: false,
-      pipelineType: cp.PipelineType.V2, 
-      selfMutation: false, 
+      pipelineType: cp.PipelineType.V2,
+      selfMutation: false,
+      // Ensure modern CodeBuild image (Node 20), and allow easy env overrides later
+      codeBuildDefaults: {
+        buildEnvironment: {
+          buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+          privileged: false,
+        },
+        partialBuildSpec: codebuild.BuildSpec.fromObject({
+          version: '0.2',
+        }),
+      },
     });
 
-    // Dev stage (deploys EntrixCoreStack into this account/region)
+    // Deploy Dev
     pipeline.addStage(new DevAppStage(this, 'Dev', { env: props.env }));
     pipeline.buildPipeline();
 
-    // ---- Notifications via EventBridge → SNS (no need to touch pipeline.pipeline) ----
+    // Notify on pipeline state changes
     new events.Rule(this, 'PipelineStateChange', {
       description: 'Notify on CodePipeline execution state changes',
       eventPattern: {
