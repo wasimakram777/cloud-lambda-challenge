@@ -1,0 +1,7 @@
+{
+  "devDependencies": {
+    "typescript": "^5",
+    "ts-node": "^10",
+    "aws-cdk": "2.1029.1"
+  }
+}
