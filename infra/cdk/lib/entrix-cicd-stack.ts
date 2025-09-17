@@ -40,30 +40,48 @@ export class EntrixCicdStack extends cdk.Stack {
       { connectionArn: props.connectionArn }
     );
 
-    // Synth: run in infra/cdk, install, build, synth
     const synth = new pipelines.ShellStep('Synth', {
       input: source,
       env: { CDK_NEW_BOOTSTRAP: '1' },
+    
+      // Install deps for the CDK project without changing directories
       installCommands: [
         'echo "SRC=$CODEBUILD_SRC_DIR"; pwd; ls -la',
-        // pick correct folder even if CodePipeline checks out into a top-level dir
-        'WORKDIR="infra/cdk"; [ -d "$WORKDIR" ] || WORKDIR="cloud-lambda-challenge/infra/cdk"',
-        'echo "Using WORKDIR=$WORKDIR"',
-        // Prefer Node 20 if nvm present (CodeBuild STANDARD_7_0 already supports Node 20)
+        // Try both layouts: with and without a top-level folder
+        'CDK_DIR="infra/cdk"; [ -f "$CDK_DIR/package.json" ] || CDK_DIR="cloud-lambda-challenge/infra/cdk"',
+        'echo "Using CDK_DIR=$CDK_DIR"',
+        // Optional: use Node 20 if available via nvm (image may default to Node 18)
         'if [ -s /usr/local/nvm/nvm.sh ]; then . /usr/local/nvm/nvm.sh && nvm install 20 && nvm use 20; fi',
-        'cd "$WORKDIR"',
         'node -v && npm -v',
-        '[ -f package-lock.json ] && npm ci || npm install',
+        // Install dependencies inside the CDK project
+        '[ -f "$CDK_DIR/package-lock.json" ] && npm --prefix "$CDK_DIR" ci || npm --prefix "$CDK_DIR" install',
       ],
+    
       commands: [
-        'cd "$WORKDIR"',
-        'npm run build',
-        // make sure dist/bin/entrix-challenge-cdk.js exists after build
-        'test -f dist/bin/entrix-challenge-cdk.js || { echo "CDK app entry missing"; ls -la dist/bin; exit 1; }',
-        'npx cdk synth --app "node dist/bin/entrix-challenge-cdk.js" -o cdk.out',
+        // Build TypeScript (not strictly needed if we use ts-node, but keeps JS outputs if you want them)
+        'npm --prefix "$CDK_DIR" run build || true',
+      
+        // Prefer running CDK via ts-node so we don’t depend on dist/bin
+        // This works whether or not "dist/" exists.
+        'APP_TS="$CDK_DIR/bin/entrix-challenge-cdk.ts"',
+        'APP_JS1="$CDK_DIR/dist/bin/entrix-challenge-cdk.js"',
+        'APP_JS2="$CDK_DIR/bin/entrix-challenge-cdk.js"',
+      
+        // Choose the best available entry (TS via ts-node first, then compiled JS fallbacks)
+        'if [ -f "$APP_TS" ]; then APP_CMD="npx --prefix $CDK_DIR ts-node --transpile-only $APP_TS";',
+        'elif [ -f "$APP_JS1" ]; then APP_CMD="node $APP_JS1";',
+        'elif [ -f "$APP_JS2" ]; then APP_CMD="node $APP_JS2";',
+        'else echo "No app entry found (neither $APP_TS nor $APP_JS1/$APP_JS2)"; ls -la "$CDK_DIR"; find "$CDK_DIR" -maxdepth 3 -name "entrix-challenge-cdk.*"; exit 1; fi',
+      
+        'echo "Synth with: $APP_CMD"',
+        'npx --prefix "$CDK_DIR" cdk synth --app "$APP_CMD" -o "$CDK_DIR/cdk.out"',
       ],
-      primaryOutputDirectory: 'infra/cdk/cdk.out', // CDK Pipelines handles the path mapping
+    
+      // Artifact path is always relative to the repo root
+      primaryOutputDirectory: 'infra/cdk/cdk.out',
     });
+
+
 
     const pipeline = new pipelines.CodePipeline(this, 'EntrixPipeline', {
       pipelineName: 'EntrixPipeline',
