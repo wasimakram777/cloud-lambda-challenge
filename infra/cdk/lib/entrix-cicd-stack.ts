@@ -49,45 +49,37 @@ export class EntrixCicdStack extends cdk.Stack {
         // detect CDK project dir
         'CDK_DIR="infra/cdk"; [ -f "$CDK_DIR/package.json" ] || CDK_DIR="cloud-lambda-challenge/infra/cdk"',
         'echo "[install] Using CDK_DIR=$CDK_DIR"',
-      
-        // (optional) prefer Node 20 if nvm is preinstalled in the image
+        // prefer Node 20 if nvm exists (image may default to Node 18)
         'if [ -s /usr/local/nvm/nvm.sh ]; then . /usr/local/nvm/nvm.sh && nvm install 20 && nvm use 20; fi',
         'node -v && npm -v',
-      
-        // install deps without changing directories
+        // install deps without changing global CWD
         '[ -f "$CDK_DIR/package-lock.json" ] && npm --prefix "$CDK_DIR" ci || npm --prefix "$CDK_DIR" install',
       ],
     
       commands: [
-        // re-detect dir in build phase
         'CDK_DIR="infra/cdk"; [ -f "$CDK_DIR/package.json" ] || CDK_DIR="cloud-lambda-challenge/infra/cdk"',
         'echo "[build] Using CDK_DIR=$CDK_DIR"',
       
-        // prove sources arrived
+        // show sources we actually have
         'echo "Tree snapshot:"',
-        'find "$CDK_DIR" -maxdepth 2 -type f \\( -name "*.ts" -o -name "package.json" -o -name "tsconfig.json" -o -name "cdk.json" \\) -print',
+        'find "$CDK_DIR" -maxdepth 2 -type f \\( -name "*.ts" -o -name "package.json" -o -name "tsconfig.json" \\) -print',
       
-        // hard fail if app entry missing
+        // fail fast if entry is missing
         '[ -f "$CDK_DIR/bin/entrix-challenge-cdk.ts" ] || { echo "Missing $CDK_DIR/bin/entrix-challenge-cdk.ts"; exit 1; }',
       
         // optional compile; ts-node doesn’t require it
         'npm --prefix "$CDK_DIR" run build || true',
       
-        // ---- S Y N T H  (run inside CDK_DIR so cdk.json/path resolution Just Works) ----
-        'pushd "$CDK_DIR" >/dev/null',
-        // ensure ts-node is present for safety (once only, fast if already installed)
-        '[ -x node_modules/.bin/ts-node ] || npm i -D ts-node',
-        // EITHER rely on cdk.json if you keep one, OR run ts entry directly via ts-node:
-        // (we’ll run directly via ts-node to avoid any cdk.json reliance)
-        'npx cdk synth --app "npx ts-node --transpile-only bin/entrix-challenge-cdk.ts" -o cdk.out',
-        'popd >/dev/null',
+        // ensure ts-node in the project
+        '(cd "$CDK_DIR" && [ -x node_modules/.bin/ts-node ] || npm i -D ts-node)',
+      
+        // synth from inside CDK_DIR so local node_modules/.bin is on PATH
+        '(cd "$CDK_DIR" && npx cdk synth --app "npx ts-node --transpile-only bin/entrix-challenge-cdk.ts" -o cdk.out)',
       ],
     
       // artifact path relative to repo root
       primaryOutputDirectory: 'infra/cdk/cdk.out',
     });
-
-
 
     const pipeline = new pipelines.CodePipeline(this, 'EntrixPipeline', {
       pipelineName: 'EntrixPipeline',
