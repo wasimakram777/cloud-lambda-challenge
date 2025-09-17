@@ -13,17 +13,20 @@ new EntrixCoreStack(app, 'EntrixCoreStack', { env });
  */
 import { EntrixCicdStack } from '../lib/entrix-cicd-stack';
 
-const repoOwner = process.env.REPO_OWNER;
-const repoName = process.env.REPO_NAME;
-const branch = process.env.BRANCH || 'main';
-const connectionArn = process.env.CONNECTION_ARN;
+const repoOwner = process.env.REPO_OWNER ?? 'wasimakram777';
+const repoName = process.env.REPO_NAME  ?? 'cloud-lambda-challenge';
+const branch = process.env.BRANCH     ?? 'main';
+const connectionArn = process.env.CONNECTION_ARN ?? 'arn:aws:codestar-connections:eu-west-1:079036477129:connection/f9815251-c019-4361-8f10-74e01b944c43';
 
 if (repoOwner && repoName && connectionArn) {
   new EntrixCicdStack(app, 'EntrixCicdStack', {
-    env,
     repoOwner,
     repoName,
     branch,
     connectionArn,
+    env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region:  process.env.CDK_DEFAULT_REGION,
+    },
   });
 }
