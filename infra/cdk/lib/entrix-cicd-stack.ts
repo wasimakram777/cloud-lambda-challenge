@@ -48,23 +48,17 @@ export class EntrixCicdStack extends cdk.Stack {
     
       installCommands: [
         'echo "SRC=$CODEBUILD_SRC_DIR"; pwd; ls -la',
-        // detect CDK project dir
         'CDK_DIR="infra/cdk"; [ -f "$CDK_DIR/package.json" ] || CDK_DIR="cloud-lambda-challenge/infra/cdk"',
         'echo "[install] Using CDK_DIR=$CDK_DIR"',
         'node -v && npm -v',
-        // install deps without changing global CWD
         '[ -f "$CDK_DIR/package-lock.json" ] && npm --prefix "$CDK_DIR" ci || npm --prefix "$CDK_DIR" install',
       ],
     
       commands: [
         'CDK_DIR="infra/cdk"; [ -f "$CDK_DIR/package.json" ] || CDK_DIR="cloud-lambda-challenge/infra/cdk"',
         'echo "[build] Using CDK_DIR=$CDK_DIR"',
-      
-        // show sources we actually have
         'echo "Tree snapshot:"',
         'find "$CDK_DIR" -maxdepth 2 -type f \\( -name "*.ts" -o -name "package.json" -o -name "tsconfig.json" \\) -print',
-      
-        // fail fast if entry is missing
         '[ -f "$CDK_DIR/bin/entrix-challenge-cdk.ts" ] || { echo "Missing $CDK_DIR/bin/entrix-challenge-cdk.ts"; exit 1; }',
       
         // optional compile; ts-node doesn’t require it
