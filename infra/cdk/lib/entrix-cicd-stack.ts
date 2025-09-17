@@ -37,7 +37,9 @@ export class EntrixCicdStack extends cdk.Stack {
     const source = pipelines.CodePipelineSource.connection(
       `${props.repoOwner}/${props.repoName}`,
       branch,
-      { connectionArn: props.connectionArn }
+      { connectionArn: props.connectionArn,
+        triggerOnPush: true,
+      }
     );
 
     const synth = new pipelines.ShellStep('Synth', {
@@ -49,8 +51,6 @@ export class EntrixCicdStack extends cdk.Stack {
         // detect CDK project dir
         'CDK_DIR="infra/cdk"; [ -f "$CDK_DIR/package.json" ] || CDK_DIR="cloud-lambda-challenge/infra/cdk"',
         'echo "[install] Using CDK_DIR=$CDK_DIR"',
-        // prefer Node 20 if nvm exists (image may default to Node 18)
-        'if [ -s /usr/local/nvm/nvm.sh ]; then . /usr/local/nvm/nvm.sh && nvm install 20 && nvm use 20; fi',
         'node -v && npm -v',
         // install deps without changing global CWD
         '[ -f "$CDK_DIR/package-lock.json" ] && npm --prefix "$CDK_DIR" ci || npm --prefix "$CDK_DIR" install',
@@ -86,11 +86,13 @@ export class EntrixCicdStack extends cdk.Stack {
       synth,
       crossAccountKeys: false,
       pipelineType: cp.PipelineType.V2,
-      selfMutation: false,
+      selfMutation: true,
       // Ensure modern CodeBuild image (Node 20), and allow easy env overrides later
       codeBuildDefaults: {
         buildEnvironment: {
-          buildImage: codebuild.LinuxBuildImage.STANDARD_7_0,
+          buildImage: codebuild.LinuxBuildImage.fromDockerRegistry(
+            'public.ecr.aws/docker/library/node:20-bullseye' // or 'public.ecr.aws/docker/library/node:20'
+        ),
           privileged: false,
         },
         partialBuildSpec: codebuild.BuildSpec.fromObject({
